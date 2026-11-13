@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>幸运抽奖</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    font-family: "STKaiti", "KaiTi", "楷体", "Noto Serif SC", serif;
+    background: url("bg.png") center / 100% 100% no-repeat;
+    color: #2b2b2b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ---------- 号码显示区 ---------- */
+  .num-box {
+    position: relative;
+    min-width: 30vw;
+    padding: 3.4vh 5vw;
+    text-align: center;
+    border-radius: 18px;
+    background: rgba(252, 250, 244, 0.5);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow:
+      0 8px 28px rgba(60, 80, 60, 0.15),
+      inset 0 0 0 1.5px rgba(43, 43, 43, 0.1);
+  }
+  .num-box::before, .num-box::after {
+    content: "";
+    position: absolute;
+    top: 10px; bottom: 10px;
+    width: 1.5px;
+    background: rgba(90, 120, 95, 0.35);
+  }
+  .num-box::before { left: 14px; }
+  .num-box::after  { right: 14px; }
+
+  .range-hint {
+    font-size: clamp(12px, 1.1vw, 17px);
+    letter-spacing: 0.25em;
+    color: #6b7a6e;
+    margin-bottom: 0.3em;
+  }
+
+  #number {
+    font-family: "Georgia", "STKaiti", serif;
+    font-size: clamp(56px, 7vw, 120px);
+    font-weight: 700;
+    line-height: 1.1;
+    color: #1d1d1f;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 3px 14px rgba(250, 248, 240, 0.8);
+  }
+  /* 占位问号用楷体：西文字体里 ? 字形偏左，会导致不居中 */
+  #number.idle {
+    font-family: "STKaiti", "KaiTi", "楷体", "Noto Serif SC", serif;
+  }
+  #number.rolling { color: #5a7059; }
+  #number.win {
+    color: #a63a2e;
+    animation: pop 0.55s cubic-bezier(.2,1.6,.4,1);
+  }
+  @keyframes pop {
+    0%   { transform: scale(0.6); opacity: 0.3; }
+    60%  { transform: scale(1.12); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* ---------- 按钮 ---------- */
+  #drawBtn {
+    position: absolute;
+    bottom: 11vh;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  #resetBtn {
+    position: absolute;
+    top: 1.8vh;
+    right: 1.6vw;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    border-radius: 999px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s;
+  }
+  button:active { transform: scale(0.96); }
+  #drawBtn:active { transform: translateX(-50%) scale(0.96); }
+
+  #drawBtn {
+    font-size: clamp(18px, 1.9vw, 26px);
+    letter-spacing: 0.35em;
+    text-indent: 0.35em;
+    padding: 0.65em 2.4em;
+    color: #fdf9ef;
+    background: linear-gradient(160deg, #3d5a44, #24352a);
+    box-shadow: 0 6px 20px rgba(40, 60, 45, 0.32);
+  }
+  #drawBtn:hover:not(:disabled) { transform: translateX(-50%) translateY(-2px); box-shadow: 0 10px 26px rgba(40,60,45,.38); }
+  #drawBtn.stop { background: linear-gradient(160deg, #b0563f, #7e3223); }
+
+  #resetBtn {
+    font-size: clamp(12px, 1vw, 15px);
+    letter-spacing: 0.2em;
+    padding: 0.65em 1.5em;
+    color: #4a5a4e;
+    background: rgba(252, 250, 244, 0.7);
+    box-shadow: inset 0 0 0 1.5px rgba(74, 90, 78, 0.4);
+  }
+  #resetBtn:hover { background: rgba(252, 250, 244, 0.95); }
+
+  /* ---------- 已中奖号码：极小，仅供工作人员核对 ---------- */
+  .won-panel {
+    position: absolute;
+    bottom: 1.2vh;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    opacity: 0.45;
+    user-select: none;
+    pointer-events: none;
+  }
+  .won-panel .label {
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: #4a5a4e;
+    white-space: nowrap;
+  }
+  #wonList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3em;
+  }
+  /* 快捷键提示，同样极小 */
+  .keyhint {
+    position: absolute;
+    bottom: 1.2vh;
+    right: 1.6vw;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: #4a5a4e;
+    opacity: 0.45;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  #wonList span {
+    font-size: 11px;
+    padding: 0.05em 0.5em;
+    border-radius: 999px;
+    background: rgba(166, 58, 46, 0.08);
+    border: 1px solid rgba(166, 58, 46, 0.35);
+    color: #8c2f24;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+
+  <div class="num-box">
+    <div class="range-hint">门票编号 1 — 800</div>
+    <div id="number" class="idle">？</div>
+  </div>
+  <div class="keyhint">F 全屏 ｜ 空格 开始/停止</div>
+
+  <button id="drawBtn">开始抽奖</button>
+  <button id="resetBtn">重置本场</button>
+
+  <div class="won-panel">
+    <div class="label">已中奖</div>
+    <div id="wonList"></div>
+  </div>
+
+<script>
+(function () {
+  const MIN = 1, MAX = 800;
+
+  const numberEl = document.getElementById("number");
+  const drawBtn  = document.getElementById("drawBtn");
+  const resetBtn = document.getElementById("resetBtn");
+  const wonList  = document.getElementById("wonList");
+
+  let rolling = false;
+  let timer = null;
+  let won = [];               // 已中奖号码（自动排除，保证不撞号）
+
+  const SECURE = (window.crypto && typeof crypto.getRandomValues === "function") ? crypto : null;
+
+  // 密码学级别的均匀随机整数（含两端）
+  function randInt(lo, hi) {
+    const span = hi - lo + 1;
+    if (SECURE) {
+      const max = Math.floor(0xFFFFFFFF / span) * span; // 拒绝采样，避免取模偏差
+      const buf = new Uint32Array(1);
+      let x;
+      do { crypto.getRandomValues(buf); x = buf[0]; } while (x >= max);
+      return lo + (x % span);
+    }
+    return lo + Math.floor(Math.random() * span);
+  }
+
+  function pickCandidate() {
+    if (won.length === 0) return randInt(MIN, MAX);
+    const remaining = (MAX - MIN + 1) - won.length;
+    if (remaining <= 0) return null; // 全部抽完
+    // 用“第 k 个未中奖号码”映射，保证均匀分布
+    const k = randInt(1, remaining);
+    const taken = new Set(won);
+    let count = 0;
+    for (let n = MIN; n <= MAX; n++) {
+      if (taken.has(n)) continue;
+      if (++count === k) return n;
+    }
+    return null;
+  }
+
+  function renderWon() {
+    wonList.innerHTML = "";
+    [...won].sort((a, b) => a - b).forEach(n => {
+      const s = document.createElement("span");
+      s.textContent = n;
+      wonList.appendChild(s);
+    });
+  }
+
+  function startRoll() {
+    rolling = true;
+    drawBtn.textContent = "停！";
+    drawBtn.classList.add("stop");
+    numberEl.classList.remove("win", "idle");
+    numberEl.classList.add("rolling");
+    timer = setInterval(() => {
+      numberEl.textContent = randInt(MIN, MAX);
+    }, 50);
+  }
+
+  function stopRoll() {
+    clearInterval(timer);
+    rolling = false;
+    const result = pickCandidate();
+
+    numberEl.classList.remove("rolling", "idle");
+    drawBtn.classList.remove("stop");
+    drawBtn.textContent = "开始抽奖";
+
+    if (result === null) {
+      numberEl.textContent = "已满";
+      numberEl.classList.add("win");
+      alert("1—800 全部号码均已中奖，请先重置本场。");
+      return;
+    }
+    numberEl.textContent = result;
+    numberEl.classList.add("win");
+    won.push(result);
+    renderWon();
+  }
+
+  drawBtn.addEventListener("click", () => rolling ? stopRoll() : startRoll());
+
+  resetBtn.addEventListener("click", () => {
+    if (rolling) return;
+    if (won.length && !confirm("确定清空本场所有已中奖号码？")) return;
+    won = [];
+    renderWon();
+    numberEl.textContent = "？";
+    numberEl.classList.remove("win");
+    numberEl.classList.add("idle");
+  });
+
+  /* ---------- 键盘操作：F 全屏，空格 开始/停止 ---------- */
+  function toggleDraw() { rolling ? stopRoll() : startRoll(); }
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "f" || e.key === "F") {
+      e.preventDefault();
+      toggleFullscreen();
+    } else if (e.code === "Space") {
+      e.preventDefault();       // 防止页面滚动 / 触发聚焦按钮
+      toggleDraw();
+    }
+  });
+})();
+</script>
+</body>
+</html>
